@@ -53,6 +53,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const rows = 5;
   const numVerticesOptions = [3,4,5,6,7];
   let currentPattern = [];
+  let dots = [];
+  let polygons = [];
 
   const scales = {
     minor: ['C4','D4','Eb4','F4','G4','Ab4','Bb4','C5'],
@@ -85,81 +87,80 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  const polygons = [];
-  const dots = [];
-
   function drawPattern() {
     svg.innerHTML = '';
-    polygons.length=0;
-    dots.length=0;
-    const rowSpacing = radius/rows;
+    polygons.length = 0;
+    dots.length = 0;
+    const rowSpacing = radius / rows;
 
-    currentPattern.forEach((line,r)=>{
-      const poly = document.createElementNS("http://www.w3.org/2000/svg","polygon");
+    currentPattern.forEach((line, r) => {
+      const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
       const points = [];
-      for(let i=0;i<line.vertices;i++){
-        const angle = (i/line.vertices)*Math.PI*2 - Math.PI/2;
-        const x = centerX + (rowSpacing*(r+1)) * Math.cos(angle);
-        const y = centerY + (rowSpacing*(r+1)) * Math.sin(angle);
+      const rowDots = [];
+      for(let i = 0; i < line.vertices; i++){
+        const angle = (i / line.vertices) * Math.PI * 2 - Math.PI / 2;
+        const x = centerX + (rowSpacing * (r + 1)) * Math.cos(angle);
+        const y = centerY + (rowSpacing * (r + 1)) * Math.sin(angle);
         points.push(`${x},${y}`);
 
-        const dot = document.createElementNS("http://www.w3.org/2000/svg","circle");
-        dot.setAttribute('cx',x);
-        dot.setAttribute('cy',y);
-        dot.setAttribute('r',6);
-        dot.setAttribute('class','note-dot');
+        const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        dot.setAttribute('cx', x);
+        dot.setAttribute('cy', y);
+        dot.setAttribute('r', 6);
+        dot.setAttribute('class', 'note-dot');
         svg.appendChild(dot);
-        dots.push({element:dot,note:line.notes[i]});
+        rowDots.push({element: dot, note: line.notes[i], synth: synths[r % synths.length]});
       }
-      poly.setAttribute('points',points.join(' '));
+      poly.setAttribute('points', points.join(' '));
       svg.appendChild(poly);
       polygons.push(poly);
+      dots.push(rowDots);
     });
   }
 
   let step = 0;
   function playStep(time){
-    dots.forEach(d=>d.element.classList.remove('active'));
+    dots.forEach(row => row.forEach(dot => dot.element.classList.remove('active')));
+    polygons.forEach(poly => poly.classList.remove('active'));
 
-    let noteCount=0;
-    currentPattern.forEach(p=>{
-      for(let i=0;i<p.vertices;i++){
-        if(i===step){
-          const dot = dots[noteCount];
-          dot.element.classList.add('active');
-          synths[Math.min(noteCount,synths.length-1)].triggerAttackRelease(dot.note,"8n",time);
-        }
-        noteCount++;
+    dots.forEach((row, rowIndex) => {
+      const activeDotIndex = step % row.length;
+      const activeDot = row[activeDotIndex];
+      if (activeDot) {
+        activeDot.element.classList.add('active');
+        activeDot.synth.triggerAttackRelease(activeDot.note, "8n", time);
+      }
+      if (rowIndex === 0) {
+        polygons[rowIndex].classList.add('active');
       }
     });
-    polygons.forEach(poly=>{
-      poly.classList.toggle('active', step%2===0);
-    });
 
-    step=(step+1)%Math.max(...currentPattern.map(p=>p.vertices));
+    step++;
   }
 
   const loop = new Tone.Loop(playStep, "8n");
 
-  document.getElementById('playBtn').onclick = ()=>{
+  document.getElementById('playBtn').onclick = () => {
     loop.start(0);
     Tone.Transport.start();
   };
-  document.getElementById('stopBtn').onclick = ()=>{
+  document.getElementById('stopBtn').onclick = () => {
     loop.stop();
     Tone.Transport.stop();
-    dots.forEach(d=>d.element.classList.remove('active'));
-    polygons.forEach(p=>p.classList.remove('active'));
+    dots.forEach(row => row.forEach(d => d.element.classList.remove('active')));
+    polygons.forEach(p => p.classList.remove('active'));
   };
-  document.getElementById('newPatternBtn').onclick = ()=>{
+  document.getElementById('newPatternBtn').onclick = () => {
+    loop.stop();
+    Tone.Transport.stop();
     generatePattern();
     drawPattern();
-    step=0;
+    step = 0;
+    document.getElementById('playBtn').disabled = false;
   };
 
   generatePattern();
   drawPattern();
-
 });
 </script>
 </body>

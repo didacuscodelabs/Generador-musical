@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Generador Musical Geométrico</title>
+<title>Laboratorio Musical Geométrico</title>
 <script src="https://cdn.jsdelivr.net/npm/tone@next"></script>
 <style>
   body {
@@ -15,123 +15,168 @@
     align-items:center;
     justify-content:flex-start;
     height:100vh;
+    overflow:hidden;
   }
   h1 { margin:20px; font-weight:300; }
   #controls { margin:10px; display:flex; gap:10px; }
-  button { padding:8px 12px; border:none; border-radius:5px; cursor:pointer; background:#1a1a1a; color:#fff; transition:0.2s; }
-  button:hover { background:#333; }
-  svg { border:1px solid #222; background:#0a0a0a; margin-top:20px; }
-  .cell { fill:#222; transition: fill 0.1s; }
-  .active { fill:#00ffff; }
+  button { padding:8px 12px; border:none; border-radius:5px; cursor:pointer; background:#111; color:#0ff; font-weight:600; transition:0.2s; }
+  button:hover { background:#222; }
+  svg { width:90vw; height:60vh; margin-top:20px; }
+  .note-dot { fill:#0ff; transition: fill 0.1s, r 0.1s; }
+  .active { fill:#ff0; r:8; }
+  polygon { fill:none; stroke:#0ff; stroke-width:1.5; transition:stroke-width 0.1s; }
+  polygon.active { stroke:#ff0; stroke-width:3; }
 </style>
 </head>
 <body>
 
-<h1>Generador Musical Geométrico</h1>
+<h1>Laboratorio Musical Geométrico</h1>
 <div id="controls">
   <button id="playBtn">Play</button>
   <button id="stopBtn">Stop</button>
-  <button id="randomBtn">Nuevo Patrón</button>
+  <button id="newPatternBtn">Nuevo Patrón</button>
 </div>
 
-<svg id="gridSVG" width="600" height="400"></svg>
+<svg id="visualSVG"></svg>
 
 <script>
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
 
-  const svg = document.getElementById('gridSVG');
-  const rows = 8; // instrumentos
-  const cols = 16; // pasos
-  const cellSize = 30;
-  const synths = [];
-  const grid = [];
+  await Tone.start();
 
-  const bpm = 120;
-  Tone.Transport.bpm.value = bpm;
-  
-  // --- Instrumentos ---
-  const instruments = [
-    new Tone.MembraneSynth().toDestination(), // kick
-    new Tone.MetalSynth({frequency:200, envelope:{decay:0.3}, harmonicity:5.1, modulationIndex:32, resonance:400, octaves:1}).toDestination(), // hi-hat
-    new Tone.MonoSynth({oscillator:{type:"sine"}}).toDestination(), // bass
-    new Tone.PolySynth(Tone.Synth).toDestination(), // pad
-    new Tone.FMSynth().toDestination(), // lead
-    new Tone.AMSynth().toDestination(), // melody
-    new Tone.MetalSynth().toDestination(), // perc
-    new Tone.DuoSynth().toDestination() // extra
+  const svg = document.getElementById('visualSVG');
+  const width = svg.clientWidth;
+  const height = svg.clientHeight;
+  const centerX = width/2;
+  const centerY = height/2;
+  const radius = Math.min(width,height)/3;
+
+  const rows = 6; // instrumentos
+  const numVerticesOptions = [3,4,5,6,7]; // polígonos
+  let currentPattern = [];
+
+  // --- Escalas y notas ---
+  const scales = {
+    minor: ['C3','D3','Eb3','F3','G3','Ab3','Bb3','C4'],
+    major: ['C3','D3','E3','F3','G3','A3','B3','C4'],
+    pentatonic: ['C3','D3','E3','G3','A3','C4']
+  };
+
+  const synths = [
+    new Tone.MonoSynth({oscillator:{type:'sine'}, envelope:{attack:0.01, decay:0.3, sustain:0.5, release:1}}),
+    new Tone.PolySynth(Tone.FMSynth, {volume:-8}),
+    new Tone.PolySynth(Tone.AMSynth, {volume:-10}),
+    new Tone.MembraneSynth({volume:-6}),
+    new Tone.MetalSynth({volume:-12}),
+    new Tone.DuoSynth({volume:-8})
   ];
 
-  // --- Generar grid SVG ---
-  for(let r=0;r<rows;r++){
-    grid[r] = [];
-    for(let c=0;c<cols;c++){
-      const rect = document.createElementNS("http://www.w3.org/2000/svg","rect");
-      rect.setAttribute('x', 50+c*cellSize);
-      rect.setAttribute('y', 50+r*cellSize);
-      rect.setAttribute('width', cellSize-4);
-      rect.setAttribute('height', cellSize-4);
-      rect.setAttribute('class','cell');
-      svg.appendChild(rect);
-      grid[r][c] = {rect, active:false};
+  // Efectos
+  const reverb = new Tone.Reverb({decay:4, wet:0.3}).toDestination();
+  const delay = new Tone.FeedbackDelay("8n",0.3).toDestination();
+
+  synths.forEach(s => s.connect(reverb).connect(delay));
+
+  // --- Generar patrón aleatorio ---
+  function generatePattern() {
+    currentPattern = [];
+    for(let r=0;r<rows;r++){
+      const vertices = numVerticesOptions[Math.floor(Math.random()*numVerticesOptions.length)];
+      const scaleKeys = Object.values(scales)[Math.floor(Math.random()*Object.keys(scales).length)];
+      const stepPattern = [];
+      for(let i=0;i<vertices;i++){
+        stepPattern.push(scaleKeys[Math.floor(Math.random()*scaleKeys.length)]);
+      }
+      currentPattern.push({vertices, notes:stepPattern});
     }
   }
 
-  // --- Generador aleatorio ---
-  function randomPattern(){
-    for(let r=0;r<rows;r++){
-      for(let c=0;c<cols;c++){
-        const active = Math.random()<0.2; // 20% probabilidad
-        grid[r][c].active = active;
-        grid[r][c].rect.classList.toggle('active',active);
+  // --- Dibujar visualización ---
+  const polygons = [];
+  const dots = [];
+
+  function drawPattern() {
+    svg.innerHTML = '';
+    polygons.length = 0;
+    dots.length = 0;
+    const rowSpacing = radius / rows;
+
+    currentPattern.forEach((line,r)=>{
+      const poly = document.createElementNS("http://www.w3.org/2000/svg","polygon");
+      const points = [];
+      for(let i=0;i<line.vertices;i++){
+        const angle = (i/line.vertices)*Math.PI*2 - Math.PI/2;
+        const x = centerX + (rowSpacing*(r+1)) * Math.cos(angle);
+        const y = centerY + (rowSpacing*(r+1)) * Math.sin(angle);
+        points.push(`${x},${y}`);
+
+        // Punto de nota
+        const dot = document.createElementNS("http://www.w3.org/2000/svg","circle");
+        dot.setAttribute('cx',x);
+        dot.setAttribute('cy',y);
+        dot.setAttribute('r',5);
+        dot.setAttribute('class','note-dot');
+        svg.appendChild(dot);
+        dots.push({element:dot,note:line.notes[i]});
       }
-    }
+      poly.setAttribute('points',points.join(' '));
+      svg.appendChild(poly);
+      polygons.push(poly);
+    });
   }
 
   // --- Secuenciador ---
   let step = 0;
-  function repeat(time){
-    for(let r=0;r<rows;r++){
-      const cell = grid[r][step];
-      if(cell.active){
-        // Generar nota según instrumento
-        const note = Tone.Frequency("C2").transpose(r*2); 
-        instruments[r].triggerAttackRelease(note,"8n",time);
-      }
-    }
+  const totalSteps = Math.max(...currentPattern.map(p=>p.vertices));
 
-    // Visualización
-    for(let r=0;r<rows;r++){
-      for(let c=0;c<cols;c++){
-        grid[r][c].rect.classList.remove('active-step');
-      }
-    }
-    for(let r=0;r<rows;r++){
-      grid[r][step].rect.classList.add('active-step');
-    }
+  function playStep(time){
+    dots.forEach(d=>{
+      d.element.classList.remove('active');
+    });
 
-    step = (step+1)%cols;
+    let noteCount = 0;
+    currentPattern.forEach(p=>{
+      for(let i=0;i<p.vertices;i++){
+        if(i===step){
+          const dot = dots[noteCount];
+          dot.element.classList.add('active');
+          synths[Math.min(noteCount,synths.length-1)].triggerAttackRelease(dot.note,"8n",time);
+        }
+        noteCount++;
+      }
+    });
+
+    polygons.forEach(poly=>{
+      poly.classList.toggle('active', step%2===0);
+    });
+
+    step = (step+1)%totalSteps;
   }
 
-  const loop = new Tone.Loop(repeat, "8n");
+  const loop = new Tone.Loop(playStep, "8n");
 
   // --- Botones ---
-  document.getElementById('playBtn').onclick = async ()=>{
-    await Tone.start();
+  document.getElementById('playBtn').onclick = () => {
     loop.start(0);
     Tone.Transport.start();
   };
 
-  document.getElementById('stopBtn').onclick = ()=>{
+  document.getElementById('stopBtn').onclick = () => {
     loop.stop();
     Tone.Transport.stop();
+    dots.forEach(d=>d.element.classList.remove('active'));
+    polygons.forEach(p=>p.classList.remove('active'));
   };
 
-  document.getElementById('randomBtn').onclick = ()=>{
-    randomPattern();
+  document.getElementById('newPatternBtn').onclick = () => {
+    generatePattern();
+    drawPattern();
+    step = 0;
   };
 
-  // Generar patrón inicial
-  randomPattern();
+  // --- Inicialización ---
+  generatePattern();
+  drawPattern();
 
 });
 </script>

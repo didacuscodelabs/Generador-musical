@@ -17,11 +17,11 @@
     height:100vh;
     overflow:hidden;
   }
-  h1 { margin:20px; font-weight:300; }
+  h1 { margin:20px; font-weight:300; color:#0ff; }
   #controls { margin:10px; display:flex; gap:10px; }
   button { padding:8px 12px; border:none; border-radius:5px; cursor:pointer; background:#111; color:#0ff; font-weight:600; transition:0.2s; }
   button:hover { background:#222; }
-  svg { width:90vw; height:60vh; margin-top:20px; }
+  svg { width:90vw; height:70vh; margin-top:20px; background:#0a0a0a; border-radius:10px; }
   .note-dot { fill:#0ff; transition: fill 0.1s, r 0.1s; }
   .active { fill:#ff0; r:8; }
   polygon { fill:none; stroke:#0ff; stroke-width:1.5; transition:stroke-width 0.1s; }
@@ -41,7 +41,6 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', async () => {
-
   await Tone.start();
 
   const svg = document.getElementById('visualSVG');
@@ -51,33 +50,28 @@ document.addEventListener('DOMContentLoaded', async () => {
   const centerY = height/2;
   const radius = Math.min(width,height)/3;
 
-  const rows = 6; // instrumentos
-  const numVerticesOptions = [3,4,5,6,7]; // polígonos
+  const rows = 5;
+  const numVerticesOptions = [3,4,5,6,7];
   let currentPattern = [];
 
-  // --- Escalas y notas ---
   const scales = {
-    minor: ['C3','D3','Eb3','F3','G3','Ab3','Bb3','C4'],
-    major: ['C3','D3','E3','F3','G3','A3','B3','C4'],
-    pentatonic: ['C3','D3','E3','G3','A3','C4']
+    minor: ['C4','D4','Eb4','F4','G4','Ab4','Bb4','C5'],
+    major: ['C4','D4','E4','F4','G4','A4','B4','C5'],
+    pentatonic: ['C4','D4','E4','G4','A4','C5']
   };
 
   const synths = [
-    new Tone.MonoSynth({oscillator:{type:'sine'}, envelope:{attack:0.01, decay:0.3, sustain:0.5, release:1}}),
-    new Tone.PolySynth(Tone.FMSynth, {volume:-8}),
+    new Tone.PolySynth(Tone.Synth, {volume:-6, oscillator:{type:'triangle'}}),
+    new Tone.PolySynth(Tone.Synth, {volume:-8, oscillator:{type:'sine'}}),
+    new Tone.PolySynth(Tone.FMSynth, {volume:-10}),
     new Tone.PolySynth(Tone.AMSynth, {volume:-10}),
-    new Tone.MembraneSynth({volume:-6}),
-    new Tone.MetalSynth({volume:-12}),
-    new Tone.DuoSynth({volume:-8})
+    new Tone.MembraneSynth({volume:-6})
   ];
 
-  // Efectos
   const reverb = new Tone.Reverb({decay:4, wet:0.3}).toDestination();
   const delay = new Tone.FeedbackDelay("8n",0.3).toDestination();
-
   synths.forEach(s => s.connect(reverb).connect(delay));
 
-  // --- Generar patrón aleatorio ---
   function generatePattern() {
     currentPattern = [];
     for(let r=0;r<rows;r++){
@@ -91,15 +85,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // --- Dibujar visualización ---
   const polygons = [];
   const dots = [];
 
   function drawPattern() {
     svg.innerHTML = '';
-    polygons.length = 0;
-    dots.length = 0;
-    const rowSpacing = radius / rows;
+    polygons.length=0;
+    dots.length=0;
+    const rowSpacing = radius/rows;
 
     currentPattern.forEach((line,r)=>{
       const poly = document.createElementNS("http://www.w3.org/2000/svg","polygon");
@@ -110,11 +103,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const y = centerY + (rowSpacing*(r+1)) * Math.sin(angle);
         points.push(`${x},${y}`);
 
-        // Punto de nota
         const dot = document.createElementNS("http://www.w3.org/2000/svg","circle");
         dot.setAttribute('cx',x);
         dot.setAttribute('cy',y);
-        dot.setAttribute('r',5);
+        dot.setAttribute('r',6);
         dot.setAttribute('class','note-dot');
         svg.appendChild(dot);
         dots.push({element:dot,note:line.notes[i]});
@@ -125,16 +117,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // --- Secuenciador ---
   let step = 0;
-  const totalSteps = Math.max(...currentPattern.map(p=>p.vertices));
-
   function playStep(time){
-    dots.forEach(d=>{
-      d.element.classList.remove('active');
-    });
+    dots.forEach(d=>d.element.classList.remove('active'));
 
-    let noteCount = 0;
+    let noteCount=0;
     currentPattern.forEach(p=>{
       for(let i=0;i<p.vertices;i++){
         if(i===step){
@@ -145,41 +132,35 @@ document.addEventListener('DOMContentLoaded', async () => {
         noteCount++;
       }
     });
-
     polygons.forEach(poly=>{
       poly.classList.toggle('active', step%2===0);
     });
 
-    step = (step+1)%totalSteps;
+    step=(step+1)%Math.max(...currentPattern.map(p=>p.vertices));
   }
 
   const loop = new Tone.Loop(playStep, "8n");
 
-  // --- Botones ---
-  document.getElementById('playBtn').onclick = () => {
+  document.getElementById('playBtn').onclick = ()=>{
     loop.start(0);
     Tone.Transport.start();
   };
-
-  document.getElementById('stopBtn').onclick = () => {
+  document.getElementById('stopBtn').onclick = ()=>{
     loop.stop();
     Tone.Transport.stop();
     dots.forEach(d=>d.element.classList.remove('active'));
     polygons.forEach(p=>p.classList.remove('active'));
   };
-
-  document.getElementById('newPatternBtn').onclick = () => {
+  document.getElementById('newPatternBtn').onclick = ()=>{
     generatePattern();
     drawPattern();
-    step = 0;
+    step=0;
   };
 
-  // --- Inicialización ---
   generatePattern();
   drawPattern();
 
 });
 </script>
-
 </body>
 </html>
